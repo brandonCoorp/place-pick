@@ -1,0 +1,182 @@
+'use strict';
+
+const { randomUUID } = require('crypto');
+const propertiesJson = require('../data/infocasas.json');
+
+const { normalizePrice } = require('./helpers/property/prices');
+const { normalizeArea } = require('./helpers/property/areas');
+const { cleanText } = require('./helpers/property/text');
+const { detectCategories } = require('./helpers/property/categories');
+const { detectComforts } = require('./helpers/property/comforts');
+const { detectContractTypes } = require('./helpers/property/contracts');
+
+const CHUNK_SIZE = 100;
+
+module.exports = {
+  async up(queryInterface) {
+
+    const transaction = await queryInterface.sequelize.transaction();
+
+    try {
+
+      for (
+        let offset = 0;
+        offset < propertiesJson.length;
+        offset += CHUNK_SIZE
+      ) {
+
+        const chunk = propertiesJson.slice(
+          offset,
+          offset + CHUNK_SIZE,
+        );
+
+        const properties = [];
+        const images = [];
+        const propertyTypeContracts = [];
+        const propertyCategories = [];
+        const propertyComforts = [];
+
+        for (const item of chunk) {
+
+          const propertyId = randomUUID();
+
+          const normalizedPrice = normalizePrice(item.price);
+
+          const area = normalizeArea(item.area);
+
+          const cleanDescription = cleanText(item.description);
+
+          const categories = detectCategories(item);
+
+          const comforts = detectComforts(item);
+
+          const contractTypes = detectContractTypes(item);
+
+          properties.push({
+            id: propertyId,
+            title: item.title,
+            description: cleanDescription,
+            price: normalizedPrice.bob,
+            currency: 'BOB',
+            area,
+            address: item.location,
+            latitud: item.latitude,
+            longitud: item.longitude,
+            status: 'available',
+            created_at: new Date(),
+            updated_at: new Date(),
+          });
+
+          
+          categories.forEach((categoryId) => {
+
+            propertyCategories.push({
+              id: randomUUID(),
+              property_id: propertyId,
+              category_id: categoryId,
+              status: 'active',
+              created_at: new Date(),
+              updated_at: new Date(),
+            });
+
+          });
+
+
+          comforts.forEach((comfortId) => {
+
+            propertyComforts.push({
+              id: randomUUID(),
+              property_id: propertyId,
+              comfort_id: comfortId,
+              status: 'active',
+              created_at: new Date(),
+              updated_at: new Date(),
+            });
+          });
+
+          contractTypes.forEach((contractId) => {
+
+            propertyTypeContracts.push({
+              id: randomUUID(),
+              property_id: propertyId,
+              type_contract_id: contractId,
+              status: 'active',
+              created_at: new Date(),
+              updated_at: new Date(),
+            });
+          });
+
+          if (Array.isArray(item.images)) {
+
+            item.images.forEach((url, index) => {
+
+              images.push({
+                id: randomUUID(),
+                property_id: propertyId,
+                url,
+                priority: index,
+                status: 'active',
+                created_at: new Date(),
+                updated_at: new Date(),
+              });
+            });
+          }
+        }
+
+        await queryInterface.bulkInsert(
+          'property',
+          properties,
+          { transaction },
+        );
+
+        await queryInterface.bulkInsert(
+          'property_category',
+          propertyCategories,
+          { transaction },
+        );
+
+        await queryInterface.bulkInsert(
+          'property_comfort',
+          propertyComforts,
+          { transaction },
+        );
+
+        await queryInterface.bulkInsert(
+          'property_type_contract',
+          propertyTypeContracts,
+          { transaction },
+        );
+
+        if (images.length > 0) {
+
+          await queryInterface.bulkInsert(
+            'image',
+            images,
+            { transaction },
+          );
+        }
+      }
+
+      await transaction.commit();
+
+      console.log('Seeder completado');
+
+    } catch (error) {
+
+      await transaction.rollback();
+
+      console.error(error);
+
+      throw error;
+    }
+  },
+
+  async down(queryInterface) {
+
+    await queryInterface.bulkDelete('image', null, {});
+    await queryInterface.bulkDelete('property_comfort', null, {});
+    await queryInterface.bulkDelete('property_category', null, {});
+    await queryInterface.bulkDelete('property_type_contract', null, {});
+    await queryInterface.bulkDelete('property', null, {});
+  },
+};
